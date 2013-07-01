@@ -1,0 +1,47 @@
+#!/bin/bash
+
+export JAVA_HOME="/usr/lib/jvm/jdk1.6.0_45"
+export M2_HOME="/usr/lib/maven/apache-maven-3.0.5"
+export MAVEN_HOME="/usr/lib/maven/apache-maven-3.0.5"
+export M2="/usr/lib/maven/apache-maven-3.0.5/bin"
+
+###
+# Zenoss Specific Exports
+###
+
+export BUILD64=1          # enable with 64-bit mysql, disable with 32-bit mysql
+export RRDDEPS_SKIP=1     # enable to skip building RRD dependencies (64-bit only)
+export ZENHOME=~/dev/zenoss
+export ZENSRC=~/dev/core
+export PROTOCOL_BUFFERS_PYTHON_IMPLEMENTATION=cpp
+export PYTHONPATH=$ZENHOME/lib/python
+export INSTANCE_HOME=$ZENHOME
+export PYSAMBA_DEBUG=1
+
+# ZENOSS dev repositories
+export TRUNK="http://dev.zenoss.com/svnint/trunk/core"
+export TRUNKENT="http://dev.zenoss.com/svnint/trunk/enterprise/zenpacks"
+
+export BRANCH_42X="http://dev.zenoss.com/svnint/branches/core/zenoss-4.2.x"
+export BRANCH_42X="http://dev.zenoss.com/svnint/branches/zenoss-4.2.x"
+
+# other stuff
+
+export SRC=$ZENSRC
+
+#
+ADD_TO_PATH=$ZENHOME/bin
+ADD_TO_PATH=$ADD_TO_PATH:$HOME/bin
+ADD_TO_PATH=$ADD_TO_PATH:$PATH
+ADD_TO_PATH=$ADD_TO_PATH:$M2
+ADD_TO_PATH=$ADD_TO_PATH:/usr/sbin
+ADD_TO_PATH=$ADD_TO_PATH:/opt/rrdtool/bin
+ADD_TO_PATH=$ADD_TO_PATH:/opt/eclipse
+
+export PATH=$ADD_TO_PATH:$PATH
+
+
+# Sandbox configuration
+
+export SANDBOX=http://dev.zenoss.com/svnint/sandboxen/core/fcastillo
+export SANDBOXENT=http://dev.zenoss.com/svnint/sandboxen/fcastillo

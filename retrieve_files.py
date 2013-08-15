@@ -44,7 +44,6 @@ class FileCollector(object):
                 print 'Skipping {0}. File not found.'.format(file_path)
             else:
                 files_to_tar.append(f)
-                print 'File Found!! {0}'.format(file_path)
         return files_to_tar
 
     def _tar_files(self, files_to_tar):

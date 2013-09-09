@@ -27,8 +27,9 @@ class ProcessesConnectedToPort(object):
     """ """
     LOOP_SLEEP = 10
     
-    def __init__(self, port):
+    def __init__(self, port, process_name):
         self.port = port
+        self.process_name = process_name
 
     def _execute_command(self, command):
         """
@@ -42,8 +43,11 @@ class ProcessesConnectedToPort(object):
         
     def _is_relevant(self, connection):
         """ return true if the connection is relevant """
-        return connection.protocol == 'tcp' and connection.state != 'LISTEN' and \
-               connection.port==connection.foreign.split(':')[1]
+        relevant = connection.protocol == 'tcp' and connection.state != 'LISTEN' and \
+                   connection.port==connection.foreign.split(':')[1]
+        if len(self.process_name) > 0:
+            relevant = relevant and self.process_name in connection.proc
+        return relevant
 
     def _get_process_info_from_pid(self, pid):
         """ """
@@ -153,7 +157,9 @@ if __name__ == '__main__':
         print 'Error: wrong number of parameters.'
         print 'Usage: proc_to_port <port_number> [process_name]'
     else:
-        #if
-        procs = ProcessesConnectedToPort(sys.argv[1])
+        filter_process = ''
+        if len(sys.argv) > 2:
+            filter_process = sys.argv[2]
+        procs = ProcessesConnectedToPort(sys.argv[1], filter_process)
         procs.loop_and_print()
     

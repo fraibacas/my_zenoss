@@ -90,38 +90,70 @@ class ProcessesConnectedToPort(object):
         else:
             print 'No connections found. Run "{0}" manually for more details'.format(command)
         return(connections)
-        
-    def _print_connections_by_process(self, connections):
+    
+    def _get_connections_per_pid(self, connections):
         """ """
         established_connections_per_pid = {}
-        proc_name_for_pid = {}
         for c in connections:
-            if not c.pid in proc_name_for_pid:
-                proc_name_for_pid[c.pid] = c.proc
             if c.pid in established_connections_per_pid:
                 list_of_conns = established_connections_per_pid[c.pid]
                 list_of_conns.append(c)
             else:
-                established_connections_per_pid[c.pid] = [ c ]
+                established_connections_per_pid[c.pid] = [ c ]      
+        return established_connections_per_pid
+    
+    def _get_process_name_per_pid(self, connections):
+        process_name_per_pid = {}
+        for c in connections:
+            if not c.pid in process_name_per_pid:
+                process_name_per_pid[c.pid] = c.proc
+        return process_name_per_pid
         
-        for pid in established_connections_per_pid.keys():
+    def _print_connections_per_process(self, established_connections_per_pid, proc_name_for_pid):
+        """ """
+        for pid in sorted(established_connections_per_pid.keys()):
             print 'PID [{0}]  /  PROCESS {1}  /  NUMBER OF CONNECTIONS [{2}]'.format(pid, proc_name_for_pid[pid],len(established_connections_per_pid[pid]))
 
-    def loop_and_print(self):
-        print 'checking processes conneted to port {}'.format(self.port)
-        while(True):
-            connections = self._get_connections_to_port()
-            self._print_connections_by_process(connections)
+    def _print_connections_changes(self, current_connections_per_pid, previous_connections_per_pid, process_name_per_pid):
+        """ """
+        changes_per_pid = {}
+        for pid in current_connections_per_pid.keys():
+            current_number_of_conns = len(current_connections_per_pid[pid])
+            prev_number_of_conns = 0
+            if pid in previous_connections_per_pid:
+                prev_number_of_conns = len(previous_connections_per_pid[pid])
+            if current_number_of_conns != prev_number_of_conns:
+                changes_per_pid[pid] = current_number_of_conns - prev_number_of_conns
+                
+        if len(changes_per_pid.keys()) > 0:
             print '--------------------------------------------'
-            #for c in connections: print c
+            print 'count changes'        
+            for pid in sorted(changes_per_pid.keys()):
+                print 'PID [{0}]  /  PROCESS {1}  /  CHANGE [{2}]'.format(pid, process_name_per_pid[pid], changes_per_pid[pid])
+            print '--------------------------------------------'
+            
+    def loop_and_print(self):
+        """ """
+        print 'checking processes connected to port {}'.format(self.port)
+        current_connections_per_pid = {}
+        previous_connections_per_pid = {}
+        while(True):
+            previous_connections_per_pid = current_connections_per_pid
+            connections = self._get_connections_to_port()
+            #print connections
+            current_connections_per_pid = self._get_connections_per_pid(connections)
+            process_name_per_pid = self._get_process_name_per_pid(connections)
+            self._print_connections_per_process(current_connections_per_pid, process_name_per_pid)
+            self._print_connections_changes(current_connections_per_pid, previous_connections_per_pid, process_name_per_pid)
+            print '======================================================'
             time.sleep(self.LOOP_SLEEP)
-        
 
 if __name__ == '__main__':
     if len(sys.argv) < 2:
         print 'Error: wrong number of parameters.'
-        print 'Usage: proc_to_port <port_number>'
+        print 'Usage: proc_to_port <port_number> [process_name]'
     else:
+        #if
         procs = ProcessesConnectedToPort(sys.argv[1])
         procs.loop_and_print()
     

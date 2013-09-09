@@ -5,6 +5,7 @@
 import sys
 import subprocess
 import time
+import datetime
 
 class Connection(object):
     """ """
@@ -131,7 +132,7 @@ class ProcessesConnectedToPort(object):
                 
         if len(changes_per_pid.keys()) > 0:
             print '--------------------------------------------'
-            print 'count changes'        
+            print 'count changes {0}'.format(str(datetime.datetime.now().time()))  
             for pid in sorted(changes_per_pid.keys()):
                 print 'PID [{0}]  /  PROCESS {1}  /  CHANGE [{2}]'.format(pid, process_name_per_pid[pid], changes_per_pid[pid])
             print '--------------------------------------------'

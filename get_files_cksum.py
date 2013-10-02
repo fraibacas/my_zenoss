@@ -80,16 +80,13 @@ if __name__ == '__main__':
 
         print '-----------------------------------------------------------------------'
         print 'Files in {0} but not in {1}:'.format(path1, path2)
-        print files_in_path1_and_not_in_path2
+        print "\n".join(files_in_path1_and_not_in_path2)
         print '-----------------------------------------------------------------------'
         print 'Files in {0} but not in {1}:'.format(path2, path1)
-        print files_in_path2_and_not_in_path1
+        print "\n".join(files_in_path2_and_not_in_path1)
         print '-----------------------------------------------------------------------'
         print 'Files with different checksum:'
-        print different_files
-
-        print len(sums1)
-        print len(sums2)
+        print "\n".join(different_files)
 
 
 

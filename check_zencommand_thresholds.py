@@ -34,12 +34,12 @@ class Datapoints(object):
       self.datapoints = {}
  
   def add_datapoint(self, dp):
-      self.datapoints[dp.datapoint] = dp
+      self.datapoints[(dp.datapoint,dp.threshold)] = dp
 
   def get_datapoints(self):
       dps = []
-      for dp in sorted(self.datapoints.keys()):
-          dps.append(self.datapoints[dp])
+      for dp, t in sorted(self.datapoints.keys()):
+          dps.append(self.datapoints[(dp,t)])
       return dps
 
 

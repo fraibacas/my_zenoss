@@ -8,7 +8,6 @@
 import os
 import pickle
 
-import re
 import sys
 
 COLLECTOR = 'm201sinf01v'
@@ -96,10 +95,7 @@ class ZenCommandParser(object):
       datapoint = arr[3]
       dp.datapoint = datapoint.split('/')[-1]
       dp.threshold = arr[5]
-
-      ip = re.findall( r'[0-9]+(?:\.[0-9]+){3}', datapoint)
-      if len(ip) > 0:
-          dp.ip = ip[0]
+      dp.ip = datapoint.split('/')[1]
 
       return dp
 

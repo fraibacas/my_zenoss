@@ -1,8 +1,25 @@
 
 """
-   Reads the zencommand's outfile file and prints ip datapoint and threshold name
-   By default the output file is read from zenoss log. A different file can be passed
-   as a command line argument.
+check_zencommand_thresholds greps for traces in the zencommand log that contain the following text:
+
+  GREP_STRING = 'TOSHIBA-DEBUG: Checking value'
+  GREP_STRING_2 = 'for threshold'
+
+and writes the result of this grep to a temp file to analyze the results.
+
+An example of a line that would match the grep is:
+
+2013-10-25 22:59:32,333 INFO zen.thresholds: TOSHIBA-DEBUG: Checking value '1568657408.0' on 'Devices/192.168.200.1/mem_MemFree' for threshold 'Memory Utilization 100 Percent'
+
+The tool analyzes the temp file line by line, and from each line, extracts the ip/hostname of the device, the data point and the threshold name, and stores all that information in a data structure. This data structure is the one that the tool pickles.
+
+For the above example, the tool would extact the following information:
+
+device: 192.168.200.1
+datapoint: mem_MemFree
+threshold: 'Memory Utilization 100 Percent'
+
+After analyzing the temp file, we get a data structure that contains for each device the list of data points and thresholds that are checked.
 """
 
 import os
@@ -28,7 +45,7 @@ class Datapoint(object):
 
 
 class Datapoints(object):
-  """ """
+  """ Dict {Key: (data point, threshold)} {Value: Datapoint object} """
   def __init__(self):
       self.datapoints = {}
  
@@ -43,7 +60,7 @@ class Datapoints(object):
 
 
 class DevicesDatapoints(object):
-  """ Dict Key ip Value Datapoins object """
+  """ Dict {Key: ip} {Value Datapoins object} """
 
   def __init__(self):
       self.devices = {}
@@ -128,7 +145,11 @@ def generate_pickle(data):
   pfile.close()
 
 if __name__ == '__main__':
-  """ """
+  """ 
+      Reads the zencommand's outfile file and prints ip datapoint and threshold name
+      By default the output file is read from zenoss log. A different file can be passed
+      as a command line argument.
+  """
   #By default it reads the log file from '/opt/zenoss/log/COLLECTOR_NAME/zencommand.log'
   #If a param is passed, we take it as file path
   if len(sys.argv) > 1:

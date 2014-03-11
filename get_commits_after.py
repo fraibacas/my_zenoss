@@ -7,11 +7,15 @@ DEBUG = True
 
 # Specific stuff for 4.2.5 CA2 Rebase
 INITIAL_POPULATE_COMMIT = "938da9a088d496d39846dbdd1e62955ac77951e2"
+COMMIT_BEFORE_INITIAL_POPULATE_COMMIT = "2f4a25028ec83723fbb50bd2f8cad09c6c5225cc"
 COMMITS_TO_EXCLUDE = [ 	"9edd2580bb8134a513e6614de7973b979f1dd39b", #Changing GA to 2070 in yamls
 						"d251844154f3e618b81f553d7d7c3d833e004712", #Dsabling CSA for now
 						"3bd3e4f318e112f167325b260c953ae1c927070b", #ZEN-10259: Fix issue with migrate scripts being incorrectly versioned & the schema version being incorrectly bumped in 4.2.5
 						"ed585fee0f4d2edf122742fc3f4cf5884ffd9a1b", #Revert "Dsabling CSA for now"
 ]
+POPULATE_SCRIPT = "populate_src"
+NEW_BUILD_TAG="2101"
+
 # End of Specific stuff for 4.2.5 CA2 Rebase
 
 GIT_LOG_FIELD_SEPARATOR = "@=@"
@@ -25,13 +29,19 @@ def log(text, debug=False):
 		print text
 
 
-def execute_command(cmd, redirect_output=None):
+def execute_command(cmd, ignore_error=False, redirect_output=None):
 	""" """
 	command = cmd
 	if redirect_output is not None:
 		command = "{0} > {1}".format(command, redirect_output)
-	log("Executing: {0}".format(command), True)
 	exit_code = os.system(command)
+	if exit_code == 0:
+		log("Executing: {0}".format(command), True)
+	else:
+		log("\nERROR: Executing: {0}\n".format(command), True)
+		if not ignore_error:
+			sys.exit()
+	return exit_code
 
 
 class Commit(object):
@@ -50,6 +60,7 @@ class CommitRetriever(object):
 	def __init__(self):
 		self.commits = []
 		self.merge_commits = []
+		self._load_commits()
 
 	def _parse_commit_log_line(self, line):
 		"""
@@ -74,7 +85,7 @@ class CommitRetriever(object):
 					commits.append(commit)
 		return commits
 
-	def load_commits(self):
+	def _load_commits(self):
 		execute_command(GIT_LOG_ALL_COMMITS_COMMAND, redirect_output=COMMITS_FILE)
 		self.commits = self._process_git_log_output()
 		
@@ -102,9 +113,12 @@ class CommitRetriever(object):
 
 class CherryPickProcessor(object):
 
-	def cherry_pick_commits(commits):
+	def cherry_pick_commits(self, commits):
 		for c in commits:
-			pass
+			print "-"*100
+			print "Cherry-Picking Commit {0}".format(c.hash)
+			print "-"*100
+			code = execute_command("git cherry-pick {0}".format(c.hash))
 
 class SpreadSheetWriter(object):
 
@@ -130,11 +144,46 @@ class SpreadSheetWriter(object):
 			row = row + 1
 		self.book.save(SPREAD_SHEET_FILE)
 
+def print_message(msg):
+	WIDTH = 100
+	print "="*WIDTH
+	if not isinstance(msg, list):
+		msg = [ msg ]
+	for line in msg:
+		print "{0}".format(line).center(WIDTH)
+	print "="*WIDTH
+
+def update_populate_script(build_id):
+	tmp_file = "/tmp/populate_script.tmp"
+	TAG_PATTERN = 'TAG="zenoss-build-'
+	with open(POPULATE_SCRIPT) as read_file:
+		with open(tmp_file, "w") as write_file:
+			for line in read_file:
+				line_to_write = line
+				if TAG_PATTERN in line:
+					line_to_write = '{0}{1}"\n'.format(TAG_PATTERN, build_id)
+				write_file.write(line_to_write)
+		execute_command("cp {0} ./{1}".format(tmp_file, POPULATE_SCRIPT))
+
 if __name__ == "__main__":
-	"""	
+
 	"""
+	=============================================================================
+	==> NOTICE: THIS SCRIPT MUST BE RUN FROM THE BIN DIR OF THE 4.2.5 REPO!!! <==
+	=============================================================================
+	""" 
+
+	""" We get sure that we are in master to retrieve the commits to cherry-pick """
+	BACKUP_BRANCH = "CA2_Backup"
+	print_message("Checking out {0} branch".format(BACKUP_BRANCH))
+	code = execute_command("git checkout -f {0}".format(BACKUP_BRANCH), ignore_error=True)
+	if code != 0:
+		print "Branch {0} does not exists. Lets's create it.".format(BACKUP_BRANCH)
+		execute_command("git checkout -f -b {0}".format(BACKUP_BRANCH))
+
+	""" Retrieving commits """
+	print_message("Retrieving commits")
 	commit_retriever = CommitRetriever()
-	commit_retriever.load_commits()
 	# Gets all commits
 	all_commits = commit_retriever.get_commits(exclude_merge_commits=False)
 	# Gets all commits excluding merge pull request
@@ -144,12 +193,56 @@ if __name__ == "__main__":
 	# Gets the commits to cherry pick for CA2
 	ca2_commits_to_cherry_pick = commit_retriever.get_commits(commits_after=INITIAL_POPULATE_COMMIT, commits_to_exclude=COMMITS_TO_EXCLUDE)
 
+	""" Switch to TEST_BRANCH """
+	TEST_BRANCH = "test_branch"
+	print_message("Checking out {0}".format(TEST_BRANCH))
+	code = execute_command("git branch -D {0}".format(TEST_BRANCH), ignore_error=True)
+	if code != 0:
+		print "Branch {0} does not exists. Lets's create it.".format(TEST_BRANCH)
+	code = execute_command("git branch {0}".format(TEST_BRANCH))
+	code = execute_command("git checkout -f {0}".format(TEST_BRANCH))
 
+	""" Reset the branch to the commit right before the code population """
+	print_message("Reverting branch to commit before '2070 Initial Load'")
+	code = execute_command("git reset --hard {0}".format(COMMIT_BEFORE_INITIAL_POPULATE_COMMIT))
+
+	""" Modify the populate script to use the new Build TAG """
+	print_message("Adding new build TAG to {0} script".format(POPULATE_SCRIPT))
+	update_populate_script(NEW_BUILD_TAG)
+	# Commit the changes
+	code = execute_command("git add {0}".format(POPULATE_SCRIPT))
+	commit_msg = "CA2_REBASE: Change Build TAG to {0}".format(NEW_BUILD_TAG)
+	code = execute_command("git commit -m '{0}'".format(commit_msg))
+
+	""" Populate with the new code (Revision 2101) """
+	#"""
+	print_message("Populating Repo with Build TAG {0}".format(NEW_BUILD_TAG))
+	code = execute_command("./populate_src ")
+	# Commit the changes
+	code = execute_command("git add ../src/*")
+	commit_msg = "CA2_REBASE: Populate code with TAG {0}".format(NEW_BUILD_TAG)
+	code = execute_command("git commit -m '{0}'".format(commit_msg))
+	#"""
+
+	""" Cherry-pick commits """
+	print_message("Cherry-Picking commits")
+	cherry_pick_processor = CherryPickProcessor()
+	cherry_pick_processor.cherry_pick_commits(ca2_commits_to_cherry_pick[::-1])
+
+	""" C'EST FINI! """
+
+	print "\n\n"
+	print_message(["CA2 REBASE DONE!", "Please push the changes to the repo", "THE END"])
+
+	# Writes spreadsheet with info about the commits cherry-picked
+	#
+	"""
 	xls_writer = SpreadSheetWriter()
 	xls_writer.export_commits_list(all_commits, "All Commits")
 	xls_writer.export_commits_list(all_commits_no_merges, "All Commits no merges")
 	xls_writer.export_commits_list(all_ca2_commits, "CA2 Relevant Commits")
 	xls_writer.export_commits_list(ca2_commits_to_cherry_pick, "Commits to CherryPick")
+	"""
 
 
 

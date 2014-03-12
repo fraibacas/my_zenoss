@@ -134,6 +134,9 @@ class SpreadSheetWriter(object):
 		self.book.save(SpreadSheetWriter.SPREAD_SHEET_FILE)
 
 class RPSCodePopulator(object):
+	"""
+	    Populates the 4.2.5 RPS repo with a new version of the rpm in a test branch.
+	"""
 
 	BACKUP_BRANCH = "CA2_Backup"
 	TEST_BRANCH = "test_branch"
@@ -146,7 +149,7 @@ class RPSCodePopulator(object):
 	]
 
 	POPULATE_SCRIPT = "populate_src"
-	NEW_BUILD_TAG="2107"
+	NEW_BUILD_TAG="2108"
 	TMP_FILE = "/tmp/ca2_rebase.tmp"
 
 	def __init__(self):
@@ -163,6 +166,7 @@ class RPSCodePopulator(object):
 	def _create_backup_branch(self):
 		""" Creates a backup branch """
 		self.print_message("Checking out {0} branch".format(RPSCodePopulator.BACKUP_BRANCH))
+		code = execute_command("git checkout -f master")
 		code = execute_command("git checkout -f {0}".format(RPSCodePopulator.BACKUP_BRANCH), ignore_error=True)
 		if code != 0:
 			log("Branch {0} does not exists. Lets's create it.".format(RPSCodePopulator.BACKUP_BRANCH))
@@ -222,7 +226,7 @@ class RPSCodePopulator(object):
 		for comp in components:
 			file_path = "../etc/{0}.yaml".format(comp)
 			pattern = "http://artifacts.zenoss.loc/releases/4.2.5/"
-			pattern_re = '(\s*- http://artifacts.zenoss.loc/releases/4.2.5/\w*/\w*/zenoss_\w*-4.2.5-)(\d\d\d\d)(.el[56].x86_64.rpm\s*)'
+			pattern_re = '(\s*- http://artifacts.zenoss.loc/releases/4.2.5/)(\w*)(/\w*/zenoss_\w*-4.2.5-)(\d\d\d\d)(.el[56].x86_64.rpm\s*)'
 
 			with open(file_path) as read_file:
 				with open(RPSCodePopulator.TMP_FILE, "w") as write_file:
@@ -231,7 +235,7 @@ class RPSCodePopulator(object):
 						if pattern in line:
 							match = re.search(pattern_re, line)
 							if match:
-								line_to_write = match.groups()[0] + RPSCodePopulator.NEW_BUILD_TAG + match.groups()[2]
+								line_to_write = match.groups()[0] + "ca2" + match.groups()[2] + RPSCodePopulator.NEW_BUILD_TAG + match.groups()[4]
 						write_file.write(line_to_write)
 				execute_command("cp {0} {1}".format(RPSCodePopulator.TMP_FILE, file_path))
 
@@ -274,7 +278,12 @@ class RPSCodePopulator(object):
 		self._populate_code()
 		self._cherry_pick_commits(commits)
 
-		self.print_message(["\n\n", "CA2 REBASE DONE!", "Please push the changes to the repo", "THE END"])
+		msgs = []
+		print("\n\n")
+		msgs.append("CA2 REBASE DONE in branch {0}!".format(RPSCodePopulator.TEST_BRANCH))
+		msgs.append("Please push the changes to the repo and merge accordingly")
+		msgs.append("THE END")
+		self.print_message(msgs)
 
 	def print_message(self, msg):
 		WIDTH = 100

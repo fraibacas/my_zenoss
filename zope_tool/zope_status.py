@@ -72,7 +72,7 @@ class ZopeInfoRetriever(object):
 
 class ProcessInfoRetriever(object):
 
-	COMMAND = 'ps -p {0} -o %cpu,%mem,cmd | tail -n +2'
+	COMMAND = 'ps -p {0} -o %cpu,%mem,etime,cmd | tail -n +2'
 
 	def __init__(self):
 		pass
@@ -87,8 +87,8 @@ class ProcessInfoRetriever(object):
 				info['pid'] = pid
 				info['cpu'] = data[0]
 				info['mem'] = data[1]
-				info['cmd'] = ' '.join(data[2:])
-
+				info['etime'] = data[2]
+				info['cmd'] = ' '.join(data[3:])
 		return info
 
 class ZopeLogRetriever(object):
@@ -96,15 +96,15 @@ class ZopeLogRetriever(object):
 	SEPARATOR = '@$@'
 
 	FIELDS = []
-	FIELDS.append('Log_Timestamp')
-	FIELDS.append('Trace_Type')
-	FIELDS.append('Timestamp')
-	FIELDS.append('Server_Name')
-	FIELDS.append('Server_Port')
-	FIELDS.append('Path_Info')
-	FIELDS.append('Method')
-	FIELDS.append('Client')
-	FIELDS.append('HTTP_Host')
+	FIELDS.append('log_timestamp')
+	FIELDS.append('trace_type')
+	FIELDS.append('start_time')
+	FIELDS.append('server_name')
+	FIELDS.append('server_port')
+	FIELDS.append('path_info')
+	FIELDS.append('method')
+	FIELDS.append('client')
+	FIELDS.append('http_host')
 
 	def __init__(self):
 		pass
@@ -114,7 +114,6 @@ class ZopeLogRetriever(object):
 		line = line.strip()
 		data = line.split(ZopeLogRetriever.SEPARATOR)
 		if len(data) > 0:
-			#import pdb; pdb.set_trace()
 			parsed_line['fingerprint'] = (ZopeLogRetriever.SEPARATOR).join(data[2:])
 			for field, value in zip(ZopeLogRetriever.FIELDS, data):
 				parsed_line[field] = value
@@ -143,6 +142,7 @@ class ZopeInfo(object):
 		self.cpu = '-1'
 		self.mem = '-1'
 		self.cmd = ''
+		self.running_for = ''
 		#Zope Assigments
 		self.assignments = {}
 
@@ -155,6 +155,7 @@ class ZopeInfo(object):
 	def set_process_info(self, data):
 		self.cpu = data.get('cpu', '')
 		self.mem = data.get('mem', '')
+		self.running_for = data.get('etime', '')
 		self.cmd = data.get('cmd', '')
 
 	def __str__(self):
@@ -163,16 +164,16 @@ class ZopeInfo(object):
 class ZopeAssignment(object):
 
 	def __init__(self, data):
-		self.log_timestamp = data.get('Log_Timestamp', '')
+		self.log_timestamp = data.get('log_timestamp', '')
 		self.fingerprint = data.get('fingerprint', '')
-		self.trace_type = data.get('Trace_Type', '')
-		self.timestamp = data.get('Timestamp', '')
-		self.server_name = data.get('Server_Name', '')
-		self.server_port = data.get('Server_Port', '')
-		self.path_info = data.get('Path_Info', '')
-		self.method = data.get('Method', '')
-		self.client = data.get('Client', '')
-		self.http_host = data.get('HTTP_Host', '')
+		self.trace_type = data.get('trace_type', '')
+		self.start_time = data.get('start_time', '')
+		self.server_name = data.get('server_name', '')
+		self.server_port = data.get('server_port', '')
+		self.path_info = data.get('path_info', '')
+		self.method = data.get('method', '')
+		self.client = data.get('client', '')
+		self.http_host = data.get('http_host', '')
 		self.zope_id = self.server_port
 
 class ZopesManager(object):
@@ -186,8 +187,9 @@ class ZopesManager(object):
 		assigment: ZopeAssignment
 		"""
 		assignment_for = None
-		for zope_id, zope in self.zopes.iteritems():
-			if assignment.zope_id in zope_id:
+		for zope_id in self.running_zopes:
+			zope = self.zopes.get(zope_id)
+			if zope and assignment.zope_id in zope_id:
 				assignment_for = zope
 		return assignment_for
 
@@ -198,8 +200,6 @@ class ZopesManager(object):
 		zope = self._get_zope_for_assignment(assignment)
 		if zope:
 			zope.add_assignment(assignment)
-		else:
-			print 'Error: could not find zope for assignment'
 
 	def _set_zopes(self, zopes_list):
 		for zope in zopes_list:
@@ -223,7 +223,6 @@ class ZopesManager(object):
 		if len(self.running_zopes) > 0:
 			log_retreiver = ZopeLogRetriever()
 			parsed_lines = log_retreiver.read_log()
-			#parsed_lines = parsed_lines[::-1]
 			for data in parsed_lines:
 				self.add_assignment(ZopeAssignment(data))
 		else:
@@ -247,56 +246,10 @@ if __name__ == "__main__":
 	while True:
 		os.system('clear')
 		zopes_manager = ZopesManager()
+		#import pdb; pdb.set_trace()
 		zopes_manager.load_zopes()
 		zopes_manager.load_zopes_assignments()
 		zopes_manager.print_running_zopes_stats()
-
-		if True: #running_zopes:
-			pass
-			"""
-			# Retrieve cpu and mem usage for each zope
-			processes_info = {}
-			for zope in running_zopes:
-				process_info = process_info_retreiver.get_process_info(zope.pid)
-				zope.set_process_info(process_info)
-
-			#print 'Loading log file....'
-			#print datetime.datetime.now()
-			parsed_lines = log_retreiver.read_log()
-			parsed_lines = parsed_lines[::-1]
-			#print datetime.datetime.now()
-
-			for data in parsed_lines:
-				zopes_manager.add_assignment(ZopeAssignment(data))
-
-			"""
-			"""
-			zopes_assignments = {}
-			for data in parsed_lines:
-				if len(zopes_assignments.keys()) == len(running_zopes):
-					break
-				else:
-					server_port = data.get('Server_Port', '')
-					for zope in running_zopes:
-						if server_port in zope.port and zope not in zopes_assignments.keys():
-							zopes_assignments[zope] = data
-
-			if zopes_assignments:
-				for zope in zopes_assignments.keys():
-					data = zopes_assignments[zope]
-					timestamp = data.get('Log_Timestamp', '')
-					path = data.get('Path_Info', '')
-					method = data.get('Method', '')
-					url = '{0}#{1}'.format(path, method)
-					zope_info = processes_info.get(zope.pid)
-					cpu = zope_info.get('cpu', '')
-					mem = zope_info.get('mem', '')
-					print 'Server: {0}  Time:{1} %CPU: {2} %MEM: {3} Resource: {4}'.format(zope.port.ljust(20), timestamp.ljust(30), cpu.ljust(10), mem.ljust(10), url.ljust(150) )
-			print '\n'*5
-			"""
-			time.sleep(5)
-		else:
-			print 'Error: zenwebserver is not running...'
-			time.sleep(5)
+		time.sleep(5)
 
 

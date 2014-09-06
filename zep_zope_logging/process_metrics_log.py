@@ -22,11 +22,6 @@ def create_log():
 
 LOG = create_log()
 
-class ZepMetric(object):
-	def __init__(self, time_stamp, type, name, value):
-		pass
-
-
 class ZepMetricsLogProcessor(object):
 	
 	METRIC_TEXT = 'metrics-logger-reporter'
@@ -87,13 +82,17 @@ class MetricPlotter(object):
 		fig.suptitle(title, fontsize=16)
 		fig.text(0, 0, '        {0}     -     {1}'.format(min_timestamp, max_timestamp))
 		i = 1
+		data_to_show = False
 		for metric in metrics_to_plot:
 			data_to_plot = data[data['name']==metric][['timestamp', y_axes]]
-			ax = fig.add_subplot(graph_rows, graph_cols, i)
-			ax.set_ylabel(y_axes)
-			data_to_plot.plot(title=metric, ax=ax, x='timestamp', y=y_axes)
-			i = i + 1
-		fig.show()
+			if len(data_to_plot) > 0:
+				data_to_show = True
+				ax = fig.add_subplot(graph_rows, graph_cols, i)
+				ax.set_ylabel(y_axes)
+				data_to_plot.plot(title=metric, ax=ax, x='timestamp', y=y_axes)
+				i = i + 1
+		if data_to_show:
+			fig.show()
 
 class JvmMetricsProcessor(object):
 
@@ -148,20 +147,20 @@ class ZepMetricsProcessor(object):
 							'org.zenoss.zep.rest.EventsResource.updateEvents' ]
 		MetricPlotter.plot(2, metrics_to_plot, self.df, 'm1')
 
-		metrics_to_plot = [ 'org.zenoss.zep.index.impl.EventIndexerImpl.index', 
-       						'org.zenoss.zep.index.impl.EventIndexerImpl.indexFully' ]
-		MetricPlotter.plot(2, metrics_to_plot, self.df, 'mean', title='MEAN index and addNote')
-
-
+		metrics_to_plot = [ "org.zenoss.zep.index.impl.EventIndexDaoImpl.archiveIndexResultsCount",
+							"org.zenoss.zep.index.impl.EventIndexDaoImpl.summaryIndexResultsCount" ]
+		MetricPlotter.plot(2, metrics_to_plot, self.df, 'm1')
 
 def main(args):
 	metrics = ZepMetricsLogProcessor().process_file(args.get('file'))
-	
-	jvm_metrics = JvmMetricsProcessor(metrics)
-	jvm_metrics.plot_metrics()
+	if len(metrics) > 0:
+		jvm_metrics = JvmMetricsProcessor(metrics)
+		jvm_metrics.plot_metrics()
 
-	zep_metrics = ZepMetricsProcessor(metrics)
-	zep_metrics.plot_metrics()
+		zep_metrics = ZepMetricsProcessor(metrics)
+		zep_metrics.plot_metrics()
+	else:
+		print 'No metrics data found!'
 
 def parse_options():
     """Defines command-line options for script """

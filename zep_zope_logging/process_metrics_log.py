@@ -99,6 +99,12 @@ class JvmMetricsProcessor(object):
 	def __init__(self, metrics):
 		self.metrics = [ m  for m in metrics if 'jvm' in m.get('name') ]
 		self.df = DataFrame(self.metrics)
+		#Normalize Timestamp to hours
+		min_timestamp_row = self.df.ix[self.df['timestamp'].idxmin()]
+		min_timestamp_value = min_timestamp_row['timestamp']
+		self.min_timestamp = min_timestamp_row['timestamp_text']
+		self.max_timestamp = self.df.ix[self.df['timestamp'].idxmax()]['timestamp_text']
+		self.df['timestamp'] = (self.df['timestamp'] - min_timestamp_value) / 3600
 
 	def plot_metrics(self):
 		metrics_to_plot = ['jvm.memory.heap.usage', 'jvm.memory.non-heap.usage', 'jvm.fd.usage', 'jvm.memory.total.used', 'jvm.thread-states.count', 'jvm.memory.pools.Par-Eden-Space.usage']
@@ -109,6 +115,13 @@ class ZepMetricsProcessor(object):
 	def __init__(self, metrics):
 		self.metrics = [ m  for m in metrics if 'zep' in m.get('name') ]
 		self.df = DataFrame(self.metrics)
+
+		#Normalize Timestamp to hours
+		min_timestamp_row = self.df.ix[self.df['timestamp'].idxmin()]
+		min_timestamp_value = min_timestamp_row['timestamp']
+		self.min_timestamp = min_timestamp_row['timestamp_text']
+		self.max_timestamp = self.df.ix[self.df['timestamp'].idxmax()]['timestamp_text']
+		self.df['timestamp'] = (self.df['timestamp'] - min_timestamp_value) / 3600
 
 	def plot_metrics(self):
 

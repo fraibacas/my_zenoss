@@ -20,14 +20,32 @@ class ZopeLogProcessor(object):
 		try:
 			raw_request_dict = json.loads(raw_request)
 			request['user'] = raw_request_dict.get('user', '')
+			# ----------------------------------------------
 			router = raw_request_dict.get('router', '')
 			call = raw_request_dict.get('call', '')
+			if 'dmd' in call or 'dmd' in router:
+				import pdb; pdb.set_trace()
+			# SG data is in special format
+			if 'request' in raw_request_dict.keys() and raw_request_dict.get('request'):
+				try:
+					data = raw_request_dict.get('request')
+					if isinstance(data, list):
+						data = data[0]
+					if isinstance(data, dict):
+						if 'action' in data.keys():
+							router = data['action']
+						if 'method' in data.keys():
+							call = data['method']
+				except Exception:
+					pass
 			request['call'] = '{0}.{1}'.format(router, call)
+			# ----------------------------------------------
 			request['elapsed'] = float(raw_request_dict.get('elapsed_time', -1))
 			ts_text = raw_request_dict.get('timestamp', '')
 			request['timestamp_text'] = ts_text
 			request['timestamp'] = time.mktime(datetime.datetime.strptime(ts_text, "%Y-%m-%d %H:%M:%S").timetuple())
-		except Exception:
+
+		except Exception as e:
 			pass # bad datapoint
 		return request	
 
@@ -44,41 +62,6 @@ class ZopeLogProcessor(object):
 			LOG.error("Could not open file: {0}".format(log_file))
 
 		return requests
-
-class RequestPlotter(object):
-
-	@staticmethod
-	def plot(data, x_axes, y_axes, title='', kind='line'):
-		''' '''
-		if len(data) == 0:
-			return
-
-		fig = plt.figure()
-		if x_axes == 'timestamp':
-			min_timestamp_row = data.ix[data['timestamp'].idxmin()]
-			min_timestamp_value = min_timestamp_row['timestamp']
-			min_timestamp = min_timestamp_row['timestamp_text']
-			max_timestamp = data.ix[data['timestamp'].idxmax()]['timestamp_text']
-
-			#Normalize Timestamp to hours
-			data['timestamp'] = (data['timestamp'] - min_timestamp_value) / 3600
-
-			#fig.text(0, 0, '        {0}     -     {1}'.format(min_timestamp, max_timestamp))
-			#fig.suptitle(title, fontsize=16)
-
-			date_string = '{0} - {1}'.format(min_timestamp, max_timestamp)
-			if title:
-				title = '{0}\n{1}'.format(title, date_string)
-			else:
-				title = date_string
-
-		ax = fig.add_subplot(1, 1, 1)
-		if isinstance(data, Series):
-			#data.plot(title=title, ax=ax, x=x_axes, y=y_axes, marker='o')
-			data.plot(title=title, kind=kind)
-		else:
-			data.plot(title=title, ax=ax, x=x_axes, y=y_axes, marker='o', kind=kind)
-		fig.show()
 
 class ZopeRequestPlotter(object):
 
@@ -152,89 +135,154 @@ class ZopeRequestPlotter(object):
 
 		fig.show()
 
-	def plot_requests(self):
+	def plot_user_call_data(self, fmean=False, fcount=False):
+		function = None
+		if fmean:
+			function = mean
+		else:
+			function = count
+
+		if function:
+			fig = plt.figure()
+			# call analysis (mean)
+			graph_rows = 3
+			graph_cols = 1
+			plot_n = 1
+
+			# top 3 users data
+			top_users = users_call_count.index[:3]
+			for top_user in top_users:
+				#top_user = users_call_count.index[0]
+				top_user_calls = self.df[ self.df.user == top_user ]
+				ax = fig.add_subplot(graph_rows, graph_cols, plot_n)
+				top_user_calls_count = top_user_calls.groupby('call').call.function()
+				top_user_calls_count.sort()
+				top_user_calls_count.plot(title='Call count for {0}'.format(top_user), ax = ax, kind='barh')
+				plot_n = plot_n + 1
+			fig.show()
+
+	def plot_user_data(self):
+
+		# call analysis per user (count)
+
+		users_call_count = self.df.groupby('user')['timestamp'].count()
+		users_call_count.sort(ascending=False)
+
+		count_fig = plt.figure()
+		count_fig.suptitle('{0}   -   {1}'.format(self.min_timestamp, self.max_timestamp), fontsize=16)
+		graph_rows = 4
+		graph_cols = 1
+		plot_n = 1
+
+		ax = count_fig.add_subplot(graph_rows, graph_cols, plot_n)
+		users_call_count[:10].plot(title='Top 10 users. Number of calls', ax = ax, kind='barh')
+		plot_n = plot_n + 1
+
+		top_users = users_call_count.index[:3]
+		for top_user in top_users:
+			top_user_calls = self.df[ self.df.user == top_user ]
+			ax = count_fig.add_subplot(graph_rows, graph_cols, plot_n)
+			top_user_calls_count = top_user_calls.groupby('call').call.count()
+			top_user_calls_count.sort()
+			top_user_calls_count.plot(title='Call count for {0}'.format(top_user), ax = ax, kind='barh')
+			plot_n = plot_n + 1
+
+		count_fig.show()
+
+		# call analysis per user (mean)
+
+		mean_fig = plt.figure()
+		mean_fig.suptitle('{0}   -   {1}'.format(self.min_timestamp, self.max_timestamp), fontsize=16)
+		users_call_mean = self.df.groupby('user')['elapsed'].mean()
+		users_call_mean.sort(ascending=False)
+
+		graph_rows = 4
+		graph_cols = 1
+		plot_n = 1
+
+		ax = mean_fig.add_subplot(graph_rows, graph_cols, plot_n)
+		users_call_mean[:10].plot(title='Top 10 users: mean elapsed time per call', ax = ax, kind='barh')
+		plot_n = plot_n + 1
+
+		# top 3 users data
+		top_users = users_call_mean.index[:3]
+		for top_user in top_users:
+			top_user_calls = self.df[ self.df.user == top_user ]
+			ax = mean_fig.add_subplot(graph_rows, graph_cols, plot_n)
+			top_user_calls_count = top_user_calls.groupby('call').elapsed.mean()
+			top_user_calls_count.sort()
+			top_user_calls_count.plot(title='Call mean for {0}'.format(top_user), ax = ax, kind='barh')
+			plot_n = plot_n + 1
+		mean_fig.show()
+		
+
+	def plot_archive_calls(self):
+
+		archive_calls = self.df[ self.df.call == 'EventsRouter.queryArchive' ]
+		archive_calls_count = archive_calls.groupby('user')['elapsed'].count()
+		archive_calls_count.sort(ascending=False)
+
+		archive_fig = plt.figure()
+
+		archive_fig.suptitle('{0}   -   {1}'.format(self.min_timestamp, self.max_timestamp), fontsize=16)
+
+		graph_rows = 2
+		graph_cols = 1
+		plot_n = 1
+
+		# Archive call count per user
+		ax = archive_fig.add_subplot(graph_rows, graph_cols, plot_n)
+		archive_calls_count.plot(title='Archive call count per user', ax = ax, kind='barh')
+		plot_n = plot_n + 1
+		'''
+		# Archive call mean per user
+		ax = archive_fig.add_subplot(graph_rows, graph_cols, plot_n)
+		archive_calls_mean = archive_calls.groupby('user')['elapsed'].mean()
+		archive_calls_mean.plot(title='Archive call mean elapsed time per user', ax = ax, kind='barh')
+		plot_n = plot_n + 1
+		'''
+		# Archive call distribution for user with more calls to archive
+		user_pegging_archive = archive_calls_count.index[0]
+
+		pegger_df = archive_calls[archive_calls.user=='zec'][['elapsed', 'timestamp']]
+		pegger_df.sort_index(by='timestamp')
+		ax = archive_fig.add_subplot(graph_rows, graph_cols, plot_n)
+		pegger_df.plot(title='Top archive user call distribution vs elapsed time', ax=ax, x='timestamp', y='elapsed', style='.', fontsize=10)
+
+		archive_fig.show()
+
+	def plot_zec_user_calls(self):
+
+		zec_calls = self.df[ self.df.user == 'zec' ]
+		zec_calls_count = zec_calls.groupby('call')['elapsed'].count()
+		zec_calls_count.sort(ascending=False)
+
+		# Call count
+		fig = plt.figure()
+		fig.suptitle('{0}   -   {1}'.format(self.min_timestamp, self.max_timestamp), fontsize=16)
+
+		ax = fig.add_subplot(2, 1, 1)
+		zec_calls_count.plot(title='Zec User calls', ax = ax, kind='barh')
+
+		# Call Distribution
+		data_to_plot = DataFrame()
+		for call, group in zec_calls.groupby('call'):
+			data_to_plot = data_to_plot.append(group[['call','elapsed','timestamp']])
+
+		ax = fig.add_subplot(2, 1, 2)
+
+		data_to_plot.plot(title='Zec user call distribution vs elapsed time', ax=ax, x='timestamp', y='elapsed', style='.', fontsize=10)
+		
+		fig.show()
+
+
+	def plot_requests_info(self):
 
 		self.plot_call_summary()
-		'''
-		# top 15 calls count
-		call_count = {}
-		for call, group in self.df.groupby('call'):
-			call_count[call] = group.count()[0]
-		call_count_df = Series(call_count)
-		call_count_df.sort(ascending=False)
-		RequestPlotter.plot(call_count_df[:15], 'count', 'call', 'Top 15 calls (count)', kind='barh')
+		self.plot_user_data()
+		#self.plot_archive_calls()
+		self.plot_zec_user_calls()
 
-		# top 15 calls mean
-		call_mean = {}
-		for call, group in self.df.groupby('call'):
-			call_mean[call] = group['elapsed'].mean()
-		call_mean_df = Series(call_mean)
-		call_mean_df.sort(ascending=False)
-		RequestPlotter.plot(call_mean_df[:15], 'mean', 'call', 'Top 15 calls (mean)', kind='barh')
-
-		# mean of top 1000 most expensive calls grouped by call
-		top_100 = self.df.sort_index(by='elapsed', ascending=False)[:1000]
-		top_100_mean = {}
-		for call, group in top_100.groupby('call'):
-			top_100_mean[call] = group['elapsed'].mean()
-		top_100_mean_series = Series(top_100_mean)
-		top_100_mean_series.sort(ascending=False)
-		RequestPlotter.plot(top_100_mean_series, 'count', 'user', 'Top most expensive calls (mean) ', kind='barh')
-
-		# count of top 1000 most expensive calls grouped by call
-		top_100_count = {}
-		for call, group in top_100.groupby('call'):
-			top_100_count[call] = group['elapsed'].count()
-		top_100_count_series = Series(top_100_count)
-		top_100_count_series.sort(ascending=False)
-		RequestPlotter.plot(top_100_count_series, 'count', 'user', 'Top most expensive calls (count) ', kind='barh')
-		
-
-		import pdb; pdb.set_trace()
-
-		# top 20 users
-		user_count = {}
-		for user, group in self.df.groupby('user'):
-			user_count[user] = group.count()[0]
-		user_count_series = Series(user_count)
-		user_count_series.sort(ascending=False)
-		RequestPlotter.plot(user_count_series[:20], 'count', 'user', 'Top 20 users ', kind='barh')
-
-		# Call counts for top user
-		top_user = user_count_series.index[0]
-		top_user_calls = {}
-		for call, group in self.df[self.df['user']==top_user].groupby('call'): #self.df[top_user].groupby('call'):
-			top_user_calls[call] = group.count()[0]
-		top_user_calls_series = Series(top_user_calls)
-		top_user_calls_series.sort(ascending=False)
-		RequestPlotter.plot(top_user_calls_series[:5], 'count', 'user', 'Top user top calls', kind='barh')
-
-		top_user = user_count_series.index[1]
-		top_user_calls = {}
-		for call, group in self.df[self.df['user']==top_user].groupby('call'): #self.df[top_user].groupby('call'):
-			top_user_calls[call] = group.count()[0]
-		top_user_calls_series = Series(top_user_calls)
-		top_user_calls_series.sort(ascending=False)
-		RequestPlotter.plot(top_user_calls_series[:5], 'count', 'user', 'Top user top calls', kind='barh')
-
-		top_user = user_count_series.index[2]
-		top_user_calls = {}
-		for call, group in self.df[self.df['user']==top_user].groupby('call'): #self.df[top_user].groupby('call'):
-			top_user_calls[call] = group.count()[0]
-		top_user_calls_series = Series(top_user_calls)
-		top_user_calls_series.sort(ascending=False)
-		RequestPlotter.plot(top_user_calls_series[:5], 'count', 'user', 'Top user top calls', kind='barh')		
-		
-		# Call Summary
-		call_df = self.df.groupby('call').elapsed.apply(get_stats).unstack()
-
-		# User Summary
-		# - Number of calls per user
-		self.df.groupby('user').apply(get_count).unstack()
-
-		# - 10 most expensive calls by user
-		self.df.groupby(['user','call']).elapsed.apply(get_stats).unstack().sort_index(by=['max'], ascending=False)[:10]
-		'''
 
 PICKLE_FILE = '/tmp/zope_log_pickle'
 
@@ -250,7 +298,7 @@ def main(args):
 		print 'Loading data from pickle {0}'.format(PICKLE_FILE)
 		requests = pickle.load(open(PICKLE_FILE))
 
-	ZopeRequestPlotter(requests).plot_requests()
+	ZopeRequestPlotter(requests).plot_requests_info()
 
 
 def parse_options():

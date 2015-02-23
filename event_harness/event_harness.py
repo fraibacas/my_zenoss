@@ -186,7 +186,7 @@ class SampleDataLoader(object):
 
 class HarnessResultProcessor(object):
 
-	CSV_FILE = './archive_harness_results.csv'
+	CSV_FILE = './event_harness_results.csv'
 
 	def plot_results(self, workers_results):
 		""" """
@@ -324,7 +324,7 @@ class HarnessResultProcessor(object):
 					row = (result["worker"], result["success"], result["elapsed"], result["results"], result["data"])
 					writer.writerow(row)
 
-class RandomArchiveRequestGenerator(object):
+class RandomEventFilterRequestGenerator(object):
 
 	KEYS = [ 'incident', 'user', 'device', 'event_class' ]
 
@@ -345,10 +345,14 @@ class RandomArchiveRequestGenerator(object):
 		request_info[field_to_filter] = value_to_filter
 		return request_info
 
-class ArchiveTestHarnessTask(object):
+class EventTestHarnessTask(object):
 
-	def __init__(self, task_name, zenoss_url, n_requests, sample_data, user, password):
-		self.task_name = task_name
+	def __init__(self, task, zenoss_url, n_requests, sample_data, user, password):
+		"""
+		taks: (task_name, task_type)
+		"""
+		self.task_name = task[0]
+		self.task = task[1]
 		self.zenoss_url = zenoss_url
 		self.n_requests = n_requests
 		self.sample_data = sample_data
@@ -365,7 +369,10 @@ class ArchiveTestHarnessTask(object):
 
 		start = time.time()
 		try:
-			response = self.zenoss_client.send_event_filter_request(request_info, archive=True)
+			if self.task == 'filter_summary':
+				response = self.zenoss_client.send_event_filter_request(request_info, archive=False)
+			elif self.task == 'filter_archive':
+				response = self.zenoss_client.send_event_filter_request(request_info, archive=True)
 		except KeyboardInterrupt as e:
 			raise e
 		except Exception as ex:
@@ -385,7 +392,7 @@ class ArchiveTestHarnessTask(object):
 
 	def run(self):
 		results = []
-		request_generator = RandomArchiveRequestGenerator(self.sample_data)
+		request_generator = RandomEventFilterRequestGenerator(self.sample_data)
 		for request in range(self.n_requests):
 			try:
 				request_info = request_generator.generate_random_request()
@@ -395,39 +402,50 @@ class ArchiveTestHarnessTask(object):
 				break
 		return results		
 
-def worker_task(zenoss_url, n_requests, sample_data, user, password):
+
+def worker_task(zenoss_url, n_requests, sample_data, user, password, task):
 	"""" Method that all the workers will run as their task """
-	task_name = multiprocessing.current_process()._name
-	task = ArchiveTestHarnessTask(task_name, zenoss_url, n_requests, sample_data, user, password)
+	task = EventTestHarnessTask(task, zenoss_url, n_requests, sample_data, user, password)
 	return task.run()
 
-class ArchiveTestHarness(object):
 
-	def __init__(self, zenoss_url, workers, n_requests, sample_data, user, password):
-		""" """
+class EventTestHarness(object):
+
+	def __init__(self, zenoss_url, actions, n_requests, sample_data, user, password):
+		"""
+		worker_actions = [ (n_workers1, action1), (n_workers2, action2) ]
+		"""
 		self.zenoss_url = zenoss_url
-		self.n_workers = workers
 		self.n_requests = n_requests
 		self.sample_data = sample_data
 		self.user = user
 		self.password = password
+		self.n_workers = 0
+		self.tasks = []
+		for workers, action in actions:
+			self.n_workers = self.n_workers + workers
+			for id in range(1, workers+1):
+				worker_id = "{0}_{1}".format(action, id)
+				self.tasks.append((worker_id, action))
 
 	def run(self):
 		interrupted = False
 		results = []
 		start = time.time()
 		if self.n_workers > 1:
-			print "\nSpinning [{0}] workers that will send [{1}] random requests each to [{2}]....".format(self.n_workers, self.n_requests, self.zenoss_url)
+			print "\nSpinning [{0}] workers that will send [{1}] requests each to [{2}]....".format(self.n_workers, self.n_requests, self.zenoss_url)
 			try:
 				pool = multiprocessing.Pool(processes=self.n_workers)
-				results = [ pool.apply_async(worker_task, args=(self.zenoss_url, self.n_requests, self.sample_data, self.user, self.password)) for i in range(self.n_workers) ]
+				results = [ pool.apply_async(worker_task, args=(self.zenoss_url, self.n_requests, self.sample_data, self.user, self.password, task)) for task in self.tasks ]
 				results = [ p.get() for p in results ]
 			except KeyboardInterrupt:
 				interrupted = True
 				pool.terminate()
 				print "Execution terminated by user!"
+		elif self.n_workers == 1:
+			results = [ worker_task(self.zenoss_url, self.n_requests, self.sample_data, self.user, self.password, self.tasks[0]) ]
 		else:
-			results = [ worker_task(self.zenoss_url, self.n_requests, self.sample_data, self.user, self.password) ]
+			print "ERROR: No worker tasks were specified"
 
 		end = time.time()
 		if not interrupted:
@@ -446,8 +464,10 @@ def log_status_msg(msg, success=True, fill=False, width=80):
 	else:
 		print '{0} FAILED'.format(msg)
 
-def main(zenoss_url, n_workers, n_requests, data_file, user, password):
-	""" """
+def main(zenoss_url, actions, n_requests, data_file, user, password):
+	"""
+	actions: [ (n_workers1, action1), (n_workers2, action2), ... ]
+	"""
 	print ""
 	connection_status_msg = "Checking connectivity to Zenoss and credentials"
 	data_status_msg = "Loading data samples from {0}".format(data_file)
@@ -457,8 +477,8 @@ def main(zenoss_url, n_workers, n_requests, data_file, user, password):
 		sample_data = SampleDataLoader().load_from_pickle(data_file)
 		if sample_data:
 			log_status_msg(data_status_msg, fill=True)
-			if RandomArchiveRequestGenerator(sample_data).validate():
-				ArchiveTestHarness(zenoss_url, n_workers, n_requests, sample_data, user, password).run()
+			if RandomEventFilterRequestGenerator(sample_data).validate():
+				EventTestHarness(zenoss_url, actions, n_requests, sample_data, user, password).run()
 			else:
 				print "\nERROR: Sample data does not contain enough information to generate random queries.\n"
 		else:
@@ -472,13 +492,15 @@ def main(zenoss_url, n_workers, n_requests, data_file, user, password):
 def parse_options():
     """Defines command-line options for script """
     parser = argparse.ArgumentParser(version="1.0",
-                                     description="Sends radom requests to a zenoss instance to test performance.")
+                                     description="Sends radom event requests to a zenoss instance to test performance.")
     parser.add_argument("-z", "--zenoss_url", action="store", default='localhost', type=str,
                         help="Zenoss url including port")
     parser.add_argument("-n", "--n_requests", action="store", default=10, type=int,
                         help="Number of radom requests each worker will send.")
-    parser.add_argument("-w", "--n_workers", action="store", default=1, type=int,
-                        help="Number of simultaneous workers sending requests to Zenoss.")
+    parser.add_argument("-s", "--summary_workers", action="store", default=0, type=int,
+                        help="Number of simultaneous workers sending summary requests to Zenoss.")
+    parser.add_argument("-a", "--archive_workers", action="store", default=1, type=int,
+                        help="Number of simultaneous workers sending archive requests to Zenoss.")
     parser.add_argument("-d", "--data_file", action="store", default='./sample_data.pickle', type=str,
                         help="Pickle containing sample data to build request filters.")
     parser.add_argument("-u", "--user", action="store", default='admin', type=str,
@@ -492,10 +514,14 @@ if __name__ == '__main__':
 	""" """
 	cli_options = parse_options()
 	zenoss_url = cli_options.get('zenoss_url')
-	n_workers = cli_options.get('n_workers')
 	n_requests = cli_options.get('n_requests')
 	data_file = cli_options.get('data_file')
 	user = cli_options.get('user')
 	password = cli_options.get('password')
-	main(zenoss_url, n_workers, n_requests, data_file, user, password)
+
+	archive_actions = cli_options.get('archive_workers')
+	summary_actions = cli_options.get('summary_workers')
+	actions = [ (archive_actions, "filter_archive"), (summary_actions, "filter_summary") ]
+
+	main(zenoss_url, actions, n_requests, data_file, user, password)
 

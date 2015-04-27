@@ -1,0 +1,132 @@
+#!/opt/zenoss/bin/python
+##############################################################################
+#
+# Copyright (C) Zenoss, Inc. 2011, all rights reserved.
+#
+# This content is made available according to terms specified in
+# License.zenoss under the directory where your Zenoss product is installed.
+#
+##############################################################################
+
+"""Zenoss ZODB storage packing utility.
+"""
+import sys
+from os import path
+import tempfile
+import argparse
+import subprocess
+
+import Globals
+from Products.ZenUtils.Utils import zenPath
+from Products.ZenUtils.GlobalConfig import getGlobalConfiguration
+
+from relstorage import zodbpack
+
+def get_config(database=None):
+    _global_conf = getGlobalConfiguration()
+    if database:
+        _global_conf['zodb-db'] = database
+    zodb_socket = _global_conf.get('zodb-socket')
+    if zodb_socket:
+        _global_conf['socket'] = 'unix_socket %s' % zodb_socket
+    else:
+        _global_conf['socket'] = ''
+
+    config = """
+<relstorage>
+    pack-gc true
+    keep-history false
+    <mysql>
+        host %(zodb-host)s
+        port %(zodb-port)s
+        db %(zodb-db)s
+        user %(zodb-user)s
+        passwd %(zodb-password)s
+        %(socket)s
+    </mysql>
+</relstorage>
+""" % _global_conf
+    return config
+
+
+_zodbpack = zenPath('bin', 'zodbpack')
+
+def pack_database(config):
+    """
+    Write the config file and call zodbpack
+    """
+    with tempfile.NamedTemporaryFile() as configfile:
+        configfile.write(config)
+        configfile.flush()
+        cmd = [_zodbpack, configfile.name, '-d', str(options.days)]
+        if not options.legacy:
+            from Products.ZenUtils.patches import zodbpackmonkey
+            if options.buildTablesOnly:
+                print("zenossdbpack will only build internal tables. Pack phase will be skipped.")
+                zodbpackmonkey.set_build_tables_only_option()
+        return zodbpack.main(cmd)
+
+
+def get_session_database():
+    """
+    Read the value of the session database from
+    $ZENHOME/etc/zodb_db_session.conf
+    """
+    session_conf = zenPath('etc', 'zodb_db_session.conf')
+    if not path.isfile(session_conf):
+        return None
+
+    with open(session_conf) as f:
+        dbline = filter(lambda a: (a.strip().startswith('db')), f.readlines())
+        if dbline:
+            return dbline[0].split()[1]
+
+
+if __name__ == "__main__":
+    for fname in ('.remote_hub', '.remote_collector'):
+        if path.isfile(zenPath('var', fname)):
+            print "zenossdbpack should not run on a remote system"
+            sys.exit(1)
+
+    # Get the days option to forward to zodbpack
+    parser = argparse.ArgumentParser(description=__doc__)
+    parser.add_argument(
+        "-d", "--days", dest="days", type=float, default=0.5, # 12 hours
+        help="Days to keep unreferenced objects (default: %(default)s). "
+        "NOTE: To help prevent PKEs, zenossdbpack will not accept --days below 0.5")
+    parser.add_argument(
+        "-e", "--exclude-db", dest="excludeDB",
+        choices=['session', 'zodb'],
+        help="Specify which database to exclude")
+    parser.add_argument(
+        "-l", "--legacy", dest="legacy",
+        action="store_true", default=False,
+        help="Executes unpatched version of zodbpack. No checks are performed to prevent POSKeyErrors.")
+    parser.add_argument(
+        "-t", "--build-tables", dest="buildTablesOnly",
+        action="store_true", default=False,
+        help="Builds internal tables only and does not do the pack.")
+
+    options = parser.parse_args()
+    if options.days < 0.5:
+        print "  --days below 0.5 is no longer supported - defaulting to 0.5"
+        options.days = 0.5
+    options.days = 0
+
+    retcode = 1
+
+    if options.excludeDB != 'zodb':
+        # pack the main database
+        retcode = pack_database(get_config())
+    else:
+        print "Skipping zodb"
+
+    if options.excludeDB != 'session':
+        # pack the session database
+        sessiondb = get_session_database()
+        if sessiondb:
+            retcode = max(retcode, pack_database(get_config(sessiondb)))
+    else:
+        print "Skipping zodb session"
+
+    sys.exit(retcode)

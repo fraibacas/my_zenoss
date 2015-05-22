@@ -144,9 +144,9 @@ class ResultProcessor(object):
 	def generate_results_csv(self, workers_results):
 		with open(self.CSV_FILE, 'wb') as f:
 			writer = csv.writer(f)
-			writer.writerow( ('Worker', 'Success', 'Time', 'Results', 'Params') )
+			writer.writerow( ('Worker', 'Success', 'Start', 'Time', 'Results', 'Params') )
 			for worker_results in workers_results:
 				for result in worker_results:
 					if not result: continue
-					row = (result["worker"], result["success"], result["elapsed"], result["results"], result["data"])
+					row = (result["worker"], result["success"], result["start"], result["elapsed"], result["results"], result["data"])
 					writer.writerow(row)

@@ -48,8 +48,9 @@ class ZenossClient(object):
 			page = request_info.get('page', 1)
 			sort = request_info.get('sort', 'lastTime')
 			limit = request_info.get('limit', 200)
-			data = {"uid": "/zport/dmd", "page": page, "limit": limit, "sort": sort, "dir":"DESC"}
-			
+			start = (page -1)*limit
+			data = {"uid": "/zport/dmd", "page": page, "limit": limit, "start": start, "sort": sort, "dir":"DESC"}
+
 			params = request_info.get('params')
 			if not params:
 				params = {}
@@ -59,6 +60,7 @@ class ZenossClient(object):
 				event_severty = request_info.get('event_severity', [0, 1, 2, 3, 4, 5])
 				incident = request_info.get('incident')
 				event_class = request_info.get('event_class')
+				evid = request_info.get('evid')
 
 				summary = request_info.get('summary')
 				params['eventState'] = event_state
@@ -73,12 +75,14 @@ class ZenossClient(object):
 					params['zenoss.IncidentManagement.number'] = incident
 				if event_class:
 					params["eventClass"] = event_class
+				if evid:
+					params["evid"] = evid
 
 			default_keys = [ "ownerid", "eventState", "severity", "device", "component", "eventClass", 
 						     "summary", "firstTime", "lastTime", "count", "evid", "eventClassKey", "message" ]
 
 			data["params"] = params
-			data["keys"] = default_keys
+			data["keys"] = request_info.get('keys', default_keys)
 			body["data"] = [data]
 
 		return body

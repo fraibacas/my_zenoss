@@ -11,6 +11,23 @@ class BColors:
     BOLD = '\033[1m'
     UNDERLINE = '\033[4m'
 
+class ScriptConfiguration(object):
+
+    def __init__(self):
+        """ """
+        self.zenoss_url = "http://localhost:8080"
+        self.zenoss_user = "admin"
+        self.zenoss_password = "zenoss"
+
+        self.zep_host = "localhost"
+        self.zep_port = 8084
+
+        self.db_host = "localhost"
+        self.db_port = 13306
+
+        self.db_user = "zenoss"
+        self.db_password = "zenoss"
+
 def log_status_msg(msg, success=True, fill=False, width=80):
 	if fill:
 		msg = msg.ljust(width, '.')

@@ -22,7 +22,7 @@ class ZenossClient(object):
 		data = { "__ac_name": self.user, "__ac_password": self.password}
 		self.session = requests.Session()
 		try:
-			resp = self.session.post(self.AUTH_URL, data)
+			resp = self.session.post(self.AUTH_URL, data, verify=False)
 			if resp.ok:
 				# Lets load the dashboard to check that we are authenticated
 				resp = self.session.get(self.DASHBOARD_URL)

@@ -1,6 +1,7 @@
 
 import os
 import datetime
+import time
 
 from zenoss.protocols.jsonformat import to_dict, from_dict
 from zenoss.protocols.protobufs.zep_pb2 import EventSummary, EventNote, EventSummaryUpdate, EventFilter
@@ -17,10 +18,14 @@ filter_dict = { 'event_summary': [ event_summary ] }
 filter_protobuf = from_dict(EventFilter, filter_dict)
 
 
-print 'Creating 1000 events containing "{0}"" in the event summary'.format(event_summary)
+print 'Creating 1000 events containing "{0}" in the event summary'.format(event_summary)
 for i in range(0,1000):
 	os.system('zensendevent -d localhost "{0} {1}"'.format(event_summary, i))
 
+print 'Sleeping for 1 minute to wait for events to be created'
+time.sleep(60)
+
+#Get the events that we just created
 response = zep.getEventSummaries(0, filter=filter_protobuf)
 
 uuids = [ event['uuid'] for event in response['events'] ]

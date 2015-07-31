@@ -14,19 +14,20 @@ class BColors:
 class ScriptConfiguration(object):
 
     def __init__(self):
-        """ """
+        """ returns default common configuration for harness scripts """
         self.zenoss_url = "http://localhost:8080"
         self.zenoss_user = "admin"
         self.zenoss_password = "zenoss"
 
         self.zep_host = "localhost"
         self.zep_port = 8084
+        self.zep_db = "zenoss_zep"
 
         self.db_host = "localhost"
         self.db_port = 13306
 
-        self.db_user = "zenoss"
-        self.db_password = "zenoss"
+        self.db_user = "root"
+        self.db_password = ""
 
 def log_status_msg(msg, success=True, fill=False, width=80):
 	if fill:

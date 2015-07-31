@@ -25,9 +25,9 @@ class ZenossClient(object):
 			resp = self.session.post(self.AUTH_URL, data, verify=False)
 			if resp.ok:
 				# Lets load the dashboard to check that we are authenticated
-				resp = self.session.get(self.DASHBOARD_URL)
-				splitted = resp.text.split('title>')
-				if "Dashboard" in splitted[1]:
+				dashboard = self.session.get(self.DASHBOARD_URL)
+				title = dashboard.text.split('<title>')[1].split('</title>')[0]
+				if "Dashboard" in title:
 					success = True
 				else:
 					self.session = None

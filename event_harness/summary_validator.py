@@ -1,4 +1,8 @@
-
+#######################################################################################
+#
+# Checks for uuids that are in lucene and not in the database
+#
+#######################################################################################
 
 from common import log_status_msg, can_connect_to_zenoss, ScriptConfiguration, BColors
 from zenoss_client import ZenossClient

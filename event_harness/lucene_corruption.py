@@ -83,11 +83,11 @@ class EventUpdateTimeValidator(object):
                                    user=self.config.db_user, passwd=self.config.db_password, db=self.config.zep_db)
         cursor = conn.cursor()
         values = ', '.join([ str(status) for status in self.STATUSES ])
-        sql = """SELECT BINARY_UUID_TO_STR(uuid), status_id FROM {0} WHERE status_id IN ({1});""".format(table, values)
+        sql = """SELECT BINARY_UUID_TO_STR(uuid), status_id, update_time FROM {0} WHERE status_id IN ({1});""".format(table, values)
         cursor.execute(sql)
         events = {}
-        for evid, status in cursor.fetchall():
-            events[evid] = status
+        for evid, status, update_time in cursor.fetchall():
+            events[evid] = (status, update_time)
         print "Retrieving {0} events from database took {1} seconds".format(len(events), time.time() - start)
         return events
 
@@ -96,18 +96,26 @@ class EventUpdateTimeValidator(object):
             self.index_status = -1
             self.db_status = -1
 
-    def _validate(self, index_events, db_events):
+    def _validate(self, index_events, db_events, timestamp):
+        """ we wont consired events whose update_time is > timestamp - 60 seconds"""
         events = defaultdict(self._status)
 
-        for uuid, status in index_events.iteritems():
-            events[uuid].index_status = status
+        recent_events = set() # we discard events that have been update in the last minute
 
-        for uuid, status in db_events.iteritems():
-            events[uuid].db_status = status
+        for uuid, (status, update_time) in db_events.iteritems():
+            if update_time > timestamp - 60000:
+                recent_events.add(uuid)
+            else:
+                events[uuid].db_status = status
+
+        for uuid, status in index_events.iteritems():
+            if uuid not in recent_events:
+                events[uuid].index_status = status
 
         corrupt_events = {}
         for uuid, status in events.iteritems():
             if status.index_status!=-1 and status.db_status!=-1 and status.index_status != status.db_status:
+                #if status.index_status != status.db_status:
                 print "{0} / {1} - {2}".format(uuid, status.index_status, status.db_status)
                 corrupt_events[uuid] = status
 
@@ -127,12 +135,13 @@ class EventUpdateTimeValidator(object):
         connection_status_msg = "Checking connectivity to Zenoss and credentials"
         print ''
         if can_connect_to_zenoss(self.config.zenoss_url, self.config.zenoss_user, self.config.zenoss_password):
+            timestamp = time.time() * 1000
             log_status_msg(connection_status_msg, success=True, fill=True)
             print ''
             index_events = self.get_lucene_events()
             print ''
             db_events = self.get_db_events()
-            corrupt_events = self._validate(index_events, db_events)
+            corrupt_events = self._validate(index_events, db_events, timestamp)
             if len(corrupt_events) > 0:
                 print "{0} corrupt events found".format(len(corrupt_events))
                 self._generate_csv(corrupt_events)
